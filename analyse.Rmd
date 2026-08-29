@@ -1,0 +1,572 @@
+---
+title: "La production industrielle et la masse monétaire au Royaume-Uni entre 1988 et 2023"
+author: "Justine Barbot & Léandre Gachet"
+date: "Décembre 2023"
+output:
+  pdf_document:
+    fig_width: 5
+    fig_height: 4
+  html_document:
+    df_print: paged
+---
+
+# Introduction 
+
+En 2023, le Royaume-Uni est la sixième puissance économique mondiale, avec un PIB de 3 332 milliards de dollars. Pourtant, suite à la fin de la Seconde Guerre mondiale, la situation économique du pays était désastreuse. Son endettement extérieur était quinze fois supérieur à ses réserves d'or et de devises. Le pays a dû faire face à des problèmes économiques persistants avant d'être la sixième puissance économique au niveau mondial, tels que la pression sur la monnaie et les difficultés de son système industriel.
+
+Alors, pour comprendre la relation entre la production industrielle et la masse monétaire et leur évolution dans le temps, nous avons étudié ces deux variables de 1988 à 2023 au Royaume-Uni. Grâce aux analyse réalisées, nous pourrons également discuter des théories keynésienne et néo-classique liées à la production et à la masse monétaire. Cette étude de cas nous permettra également de mettre en œuvre les connaissances acquises dans le cadre du cours de macro dynamique.
+
+Dans un premier temps, nous découvrirons les caractéristiques des variables telles que leur source, les premières statistiques que nous pouvons calculer et quelques graphiques. Puis, nous présenterons les différentes théories des deux courants de pensée. Enfin, différents tests empiriques seront réalisés tels que le calcul de corrélation et de la visualisation. Ces tests seront effectués sur l’ensemble de la période ainsi que sur des sous-périodes.
+
+### Packages
+
+```{r packages}
+# Installations 
+#install.packages("taceconomics") 
+#install.packages("reshape2") 
+#install.packages("devtools")
+#install.packages("ggplot2")
+#install.packages("stargazer")
+#install.packages("patchwork")
+#install.packages("ggrepel")
+#install.packages("lubridate")
+#install_github("taceconomics/taceconomics-r")
+
+# Libraries 
+library(taceconomics) 
+library(reshape2)
+library(devtools)
+library(ggplot2)
+library(stargazer)
+library(patchwork)
+library(ggrepel)
+library(lubridate)
+```
+
+### Utilisation du data lab de TAC
+
+```{r connexion taceconomics}
+# Clé api
+taceconomics.apikey(Sys.getenv("TACECONOMICS_API_KEY"))
+```
+
+# I. Présentation des données
+
+## A) Source et description des données
+
+Pour la production industrielle du Royaume-Uni, la série de données a été récupérée sur le DataLab de TAC ECONOMICS à l’adresse suivante : https://app.taceconomics.com/data/IFS/AIP_PC_PP_SA_PT_M/GBR. Nous utilisons la base de données des statistiques financières internationales, fournie par le fonds monétaire international (FMI). Les données sont mensuelles et correspondent au pourcentage de changement par rapport à la période précédente. Elles sont disponibles de 1956 à 2023. Pour la suite de cette étude, nous étudierons la production industrielle seulement de 1988 à 2023. 
+
+Concernant la masse monétaire, les données proviennent également du DataLab de TAC ECONOMICS et sont disponibles à l’adresse suivante : https://app.taceconomics.com/data/OECD/KEI_MABMM301_GP_M/GBR. L’organisation de coopération et de développement économiques (OCDE) propose ces données de façon mensuelle et en pourcentage de croissance par rapport à la période précédente. La masse monétaire est disponible de 1987 à 2023 mais nous n’utiliserons pas l’année 1987 pour la suite de ce projet. 
+
+### Importation des données
+
+**Production industrielle**
+
+```{r import PI}
+PI_RU_data <- getdata("IFS/AIP_PC_PP_SA_PT_M/GBR?collapse=M&mode_collapse=mean&transform=null")
+
+# Renommer les colonnes
+colnames(PI_RU_data) <- "Production_industrielle"
+
+# On se concentre sur la période "1988-01-01" - "2023-04-01"
+PI_RU = window(x = PI_RU_data, start = "1988-01-01" )
+
+# dates en index -> création colonne date
+date <- seq(as.Date("1988-01-01"), by = "month", len = 424)
+PI_RU <- data.frame(PI_RU, date)
+
+# Voici les premières données de la production industrielle
+head (PI_RU)
+```
+
+**Masse monétaire**
+
+```{r import MM}
+MM_RU_data <- getdata("OECD/KEI_MABMM301_GP_M/GBR?collapse=M&mode_collapse=mean&transform=null")
+
+# Renommer les colonnes
+colnames(MM_RU_data) <- "Masse_monetaire"
+
+# Nouvelle variable de production industrielle décalée de 1 mois
+avance <- 1
+MM_RU_data$MM_decal <- c(rep(NA, avance), MM_RU_data$Masse_monetaire[1:(nrow(MM_RU_data) - avance)])
+
+# On se concentre sur la période "1988-01-01" - "2023-04-01"
+MM_RU = window(x = MM_RU_data, start = "1988-01-01", end = "2023-04-01")
+
+# Ajout de la colonne date
+MM_RU <- data.frame(MM_RU, date)
+
+# Voici les premières données de la masse monétaire
+head(MM_RU)
+```
+
+## B) Statistiques descriptives et visualisation
+
+### Statistiques descriptives
+
+```{r stat desc}
+# Production industrielle
+summary(PI_RU$Production_industrielle)
+
+# Masse monétaire
+summary(MM_RU$Masse_monetaire)
+
+# Utilisation package stargazer
+#stargazer(cbind(PI_RU, MM_RU), summary = TRUE, type = "latex")
+```
+
+Pour le minimum, le 1er quartile, la médiane, la moyenne et le 3ème quartile, le taux de croissance de la masse monétaire est supérieur au taux de croissance de la production industrielle. En revanche, le maximum de la masse monétaire est inférieur au maximum de la production industrielle. Aussi, le taux de croissance de la production industrielle réagit plus fortement aux chocs comme lors de la pandémie du Covid. On le remarque avec l’écart-type de la production industrielle qui est 2 fois plus élevé que celui de la masse monétaire.
+
+### Visualisation
+
+A présent, nous pouvons visualiser les données avec ggplot.
+
+```{r}
+ggplot(data = PI_RU, aes(x = date,
+                         y = Production_industrielle)) + 
+  geom_line(color = "#99FF33") +
+  labs(title = NULL,
+       x = NULL, 
+       y = "Taux de croissance") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Ce graphique présente l'évolution du taux de croissance de la production industrielle au Royaume-Uni de 1988 à 2023. Sur l'ensemble de cette période, l'amplitude des fluctuations est plutôt constante entre -3 % et 3 % sauf entre 2000 et 2005, où l'amplitude est un peu plus importante, et en 2020, au moment du covid.
+
+```{r}
+ggplot(data = MM_RU, aes(x = date,
+                         y = Masse_monetaire)) +
+  geom_line(color = "#6699FF") + 
+  labs(title = NULL,
+       x = NULL, 
+       y = "Taux de croissance") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Le graphique ci-dessus correspond à l'évolution du taux de croissance de la masse monétaire au Royaume-Uni entre 1988 et 2023. Ici, l'amplitude des fluctuations n'est pas toujours régulière. Par exemple, entre 1990 et 1995, l'amplitude est plutôt réduite tandis que, en 1997, on observe un creux relativement important. Il en est de même en 2010 et en 2020, où le taux de croissance a fortement augmenté.
+
+Afin de pouvoir facilement comparer graphics 2, nous superposons les 2 graphiques.
+
+```{r}
+# Graphique production industrielle
+plot_PI <- ggplot(data = PI_RU, aes(x = date, y = Production_industrielle)) + 
+  geom_line(color = "#99FF33") +
+  labs(title = NULL,
+       x = NULL,  
+       y = "Production industrielle") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())  
+
+# Graphique Masse monétaire
+plot_MM <- ggplot(data = MM_RU, aes(x = date, y = Masse_monetaire)) +
+  geom_line(color = "#6699FF") + 
+  labs(title = NULL,  
+       x = NULL,  
+       y = "Masse monétaire") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light()
+
+# Afficher les deux graphiques collés
+(plot_PI + plot_MM) +
+  plot_layout(ncol = 1) +
+  plot_annotation(title = NULL,
+                  theme = theme(plot.title = element_text(hjust = 0.5)))
+```
+
+Reprenons les points particuliers cités précédemment. En 1997, tandis que le taux de croissance de la masse monétaire diminue fortement, l'amplitude des fluctuations pour la production reste constante. Ce phénomène se reproduit en 2010, où le taux de croissance pour la masse monétaire augmente de façon importante alors que l'amplitude des fluctuations pour la production reste régulière. 
+Par contre, au moment du covid, en 2020, on observe pour les deux variables, des fluctuations plus importantes que les mois précédents.
+
+## II. Relations théoriques entre les composantes cycliques
+
+Graphiquement, nous n'observons pas de lien entre la production industrielle et la masse monétaire. Pourtant, différentes théories ont été construites au fil des années. On distingue 2 théories : la théorie keynésienne ainsi que la théorie néo-classique.
+
+La théorie économique néoclassique et la théorie économique keynésienne sont deux courants de pensée économique qui ont des différences fondamentales en ce qui concerne leur vision de l’économie et la façon dont les marchés fonctionnent. La théorie néoclassique est centrée sur l’offre et la demande, tandis que la théorie keynésienne est centrée sur la demande globale et les facteurs externes qui influencent l’économie.
+
+## A) La théorie keynésienne
+
+Pour les deux courants de pensée, la masse monétaire, qui est une variable procyclique en avance, est corrélée positivement à la production. D’une part, les keynésiens affirment qu’il y a une causalité de la politique monétaire vers l’activité. Par exemple, quand la masse monétaire augmente, la production augmente quelques temps plus tard. En effet, d’après Keynes, la sphère monétaire impacte la sphère réelle donc pour augmenter l’activité, il faut augmenter la masse monétaire.
+
+## B) La théorie néo-classique
+
+D’un autre côté, d’après les néoclassiques, la causalité est en sens inverse : on a une causalité de l’activité vers la quantité de monnaie en circulation. De ce point de vue, c’est parce que les agents anticipent le point de retournement qu’ils ont moins besoin de monnaie.
+
+# III. Tests empiriques
+
+Afin de vérifier les théories concernant le lien entre les deux variables, nous avons réalisé différents calculs et graphiques.
+
+## A) Corrélation de Pearson et corrélations dynamiques
+
+**Coefficient de corrélation de Pearson**
+
+```{r}
+cor(MM_RU$Masse_monetaire, PI_RU$Production_industrielle)
+```
+
+Le coefficient de corrélation de Pearson entre la masse monétaire et la production industrielle au Royaume-Uni est de -0.1137766. Ce chiffre est proche de 0, il n'y a donc pas de relation linéaire entre les deux variables.
+
+**Corrélations dynamiques**
+
+Etudions à présent les corrélations dynamiques de t-12 à t+12, soit sur 24 mois.
+
+```{r}
+#install.packages("runner")
+library(runner)
+
+# Fusionner les variables
+data <- cbind(MM_RU$Masse_monetaire, PI_RU$Production_industrielle)
+
+
+# Définir une fenêtre glissante de taille 24
+window_size <- 24
+
+# Calculer la corrélation avec une fenêtre glissante
+correlation_rolling <- rollapply(data, window_size, function(x) cor(x[,1], x[,2]), by.column = FALSE)
+
+# Afficher les résultats
+print(correlation_rolling)
+summary(correlation_rolling)
+```
+
+En affichant le résumé des corrélations dynamiques, on observe que les coefficients de corrélation sont proches de 0 en médiane et en moyenne. 50 % des coefficients sont compris entre -0,11 et 0,11. Le minimum et le maximum sont un peu plus proche de -1 et 1 mais cela n’a pas d’importance car ce sont des valeurs extrêmes.
+
+## B) Lien graphique entre les deux variables
+
+Nous avons ensuite réalisé des nuages de points pour éventuellement observer une relation ou une tendance entre les deux variables.
+
+**Sans le décalage**
+
+```{r}
+data <- data.frame(MM_RU, PI_RU)
+ggplot(data = data, aes(x = Masse_monetaire, y = Production_industrielle)) +
+  geom_point(color = "#6699CC") +
+  labs(title = NULL,
+       x = "Masse monétaire",
+       y = "Production industrielle") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(aes(label = format(data$date, "%Y-%m")), size = 2)
+```
+
+Ce nuage de points représente le taux de croissance de la production industrielle en fonction du taux de croissance de la masse monétaire. A long terme, il n’y a pas de relation entre les deux taux de croissance. Prenons par exemple novembre 2022 et juin 1989. Pour ces deux années le taux de croissance de la masse monétaire est très proche de 0. Pourtant, en 2022, le taux de croissance de la masse monétaire est environ égal à -1.38 % tandis qu’en 1989, le taux de croissance est environ égal à 2,58 %. De façon générale, pour un taux de croissance de la production similaire (entre -3 % et 3 %), le taux de croissance de la masse monétaire varie entre -1,25 et 2,5. De ce fait nous ne pouvons pas distinguer de relation entre les variables.
+
+Etant donné que la masse monétaire est une variable en avance, nous avons avancé d'un temps (= 1 mois) le taux de croissance de la production industrielle.
+
+**Avec le décalage**
+
+```{r}
+ggplot(data = data, aes(x = MM_decal, y = Production_industrielle)) +
+  geom_point(color = "#6699CC") +
+  labs(title = NULL,
+       x = "Masse monétaire",
+       y = "Production industrielle") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(aes(label = format(data$date, "%Y-%m")), size = 2)
+```
+
+Ce graphique reprend les mêmes éléments que le graphique précédent. Une nouvelle fois, nous n’observons pas de relation entre les deux taux de croissance, que ce soit à long terme ou à court terme.
+
+Pour analyser l’effet de la variation du taux de croissance de la masse monétaire sur le taux de croissance de la production, nous allons nous concentrer sur les périodes de choc.
+
+## C) Analyse de sous-périodes
+
+**Récession écocomique : 1990**
+
+La première période que nous allons étudier s’étend de 1988 à 1993 car, en 1990, l’économie britannique entre en phase de récession. La récession au début des années 1990, liée en partie à des facteurs tels que la hausse des taux d'intérêt, a pu avoir un impact sur l'activité économique.
+
+```{r}
+# Création de la base de données pour la production industrielle
+# On se concentre sur la période "1988-01-01" - "1993-01-01"
+PI_RU_1988_1993 = window(x = PI_RU_data, start = "1988-01-01", end = "1993-01-01")
+
+date_1988_1993 <- seq(as.Date("1988-01-01"), by = "month", len = 61)
+PI_RU_1988_1993 <- data.frame(PI_RU_1988_1993, date_1988_1993)
+
+
+# Création de la base de données pour la masse monétaire
+# On se concentre sur la période "1988-01-01" - "1993-01-01"
+MM_RU_1988_1993 = window(x = MM_RU_data, start = "1988-01-01", end = "1993-01-01")
+
+MM_RU_1993 <- data.frame(MM_RU_1988_1993, date_1988_1993)
+```
+
+Maintenant que nous avons récupéré les données pour la sous-période, nous pouvons reproduire les graphiques déjà effectués sur l'ensemble de la période.
+
+```{r}
+# Evolution de la production industrielle
+plot_PI_1988_1993 <- ggplot(data = PI_RU_1988_1993, aes(x = date_1988_1993, y = Production_industrielle)) + 
+  geom_line(color = "#99FF33") +
+  labs(title = NULL,
+       x = NULL,  
+       y = "Production industrielle") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())  
+
+# Evolution de la masse monétaire
+plot_MM_1988_1993 <- ggplot(data = MM_RU_1988_1993, aes(x = date_1988_1993, y = Masse_monetaire)) +
+  geom_line(color = "#6699FF") + 
+  labs(title = NULL,
+       x = NULL,  
+       y = "Masse monétaire") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light()
+
+# Superposer les deux graphiques
+(plot_PI_1988_1993 + plot_MM_1988_1993) +
+  plot_layout(ncol = 1) +
+  plot_annotation(title = NULL,
+                  theme = theme(plot.title = element_text(hjust = 0.5)))
+```
+
+Ce graphique présente l’évolution temporelle du taux de croissance de la production et de la masse monétaire de 1988 à 1993. Ici, même si la masse monétaire est une variable en avance, nous n’observons pas nettement une relation entre les deux variables. Par exemple, la diminution de la masse monétaire de juillet 1990 facilement remarquable n’est pas aussi visible pour la production industrielle, même quelques mois plus tard.
+
+**Nuage de point avec masse monétaire en avance**
+
+```{r}
+data_1988_1993 <- data.frame(MM_RU_1988_1993, PI_RU_1988_1993)
+ggplot(data = data_1988_1993, aes(x = MM_decal, y = Production_industrielle)) +
+  geom_point(color = "#6699CC") +
+  labs(title = NULL,
+       x = "Masse monétaire",
+       y = "Production industrielle") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(aes(label = format(data_1988_1993$date_1988_1993, "%Y-%m")), size = 2)
+```
+
+Ce nuage de points montre le taux de croissance de la production industrielle en fonction du taux de croissance de la masse monétaire de 1988 à 1993. Sur ce graphique, nous utilisons la masse monétaire décalée d’un mois. L’absence de corrélation observée précédemment se confirme ici.
+
+**Crise financière mondiale : 2008**
+
+Ensuite, la crise financière mondiale de 2008 a été l'un des événements les plus significatifs. L'effondrement de grandes institutions financières a eu des répercussions mondiales, y compris au Royaume-Uni.
+
+```{r}
+# Création de la base de données pour la production industrielle
+# On se concentre sur la période "2006-01-01" - "2011-01-01"
+PI_RU_2006_2011 = window(x = PI_RU_data, start = "2006-01-01", end = "2011-01-01")
+
+date_2006_2011 <- seq(as.Date("2006-01-01"), by = "month", len = 61)
+PI_RU_2006_2011 <- data.frame(PI_RU_2006_2011, date_2006_2011)
+
+
+# Création de la base de données pour la masse monétaire
+# On se concentre sur la période "2006-01-01" - "2011-01-01"
+MM_RU_2006_2011 = window(x = MM_RU_data, start = "2006-01-01", end = "2011-01-01")
+
+MM_RU_2006_2011 <- data.frame(MM_RU_2006_2011, date_2006_2011)
+```
+
+Maintenant que nous avons récupéré les données pour la sous-période, nous pouvons reproduire les graphiques déjà effectués sur l'ensemble de la période.
+
+```{r}
+# Evolution de la production industrielle
+plot_PI_2006_2011 <- ggplot(data = PI_RU_2006_2011, aes(x = date_2006_2011, y = Production_industrielle)) + 
+  geom_line(color = "#99FF33") +
+  labs(title = NULL,
+       x = NULL,  
+       y = "Production industrielle") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())  
+
+# Evolution de la masse monétaire
+plot_MM_2006_2011 <- ggplot(data = MM_RU_2006_2011, aes(x = date_2006_2011, y = Masse_monetaire)) +
+  geom_line(color = "#6699FF") + 
+  labs(title = NULL,
+       x = NULL,  
+       y = "Masse monétaire") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light()
+
+# Superposer les deux graphiques
+(plot_PI_2006_2011 + plot_MM_2006_2011) +
+  plot_layout(ncol = 1) +
+  plot_annotation(title = NULL,
+                  theme = theme(plot.title = element_text(hjust = 0.5)))
+
+```
+
+Ce graphique présente l’évolution temporelle du taux de croissance de la production et de la masse monétaire de 2006 à 2011. Pendant une crise économique comme celle de 2008, la masse monétaire a souvent tendance à augmenter en raison des mesures prises par les autorités pour stimuler l'économie. Ici, lorsque la masse monétaire atteint un pic en 2008, la production industrielle commence a beaucoup fructifié le mois d'après, avant de beaucoup plus chuter autour de 2009.
+
+**Nuage de point avec masse monétaire en avance**
+
+```{r}
+data_2006_2011 <- data.frame(MM_RU_2006_2011, PI_RU_2006_2011)
+ggplot(data = data_2006_2011, aes(x = MM_decal, y = Production_industrielle)) +
+  geom_point(color = "#6699CC") +
+  labs(title = NULL,
+       x = "Masse monétaire",
+       y = "Production industrielle") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(aes(label = format(data_2006_2011$date_2006_2011, "%Y-%m")), size = 2)
+```
+
+Ce nuage de points montre le taux de croissance de la production industrielle en fonction du taux de croissance de la masse monétaire de 2006 à 2011. Sur ce graphique, nous utilisons la masse monétaire décalée d’un mois. Les points entourés en rouge correspondent au début de l’année 2008, année où le taux de croissance de la production industrielle fluctue plus que les années précédentes. Même si un changement a été remarqué sur la figure 8, ici nous n’observons pas de lien entre ces points.
+
+**Période post-Brexit : 2016**
+
+Puis, le vote en faveur du Brexit en 2016 a engendré des incertitudes économiques. La période post-Brexit a été marquée par des négociations complexes, influençant potentiellement l'activité économique.
+
+```{r}
+# Création de la base de données pour la production industrielle
+# On se concentre sur la période "2015-01-01" - "2020-01-01"
+PI_RU_2015_2020 = window(x = PI_RU_data, start = "2015-01-01", end = "2020-01-01")
+
+date_2015_2020 <- seq(as.Date("2015-01-01"), by = "month", len = 61)
+PI_RU_2015_2020 <- data.frame(PI_RU_2015_2020, date_2015_2020)
+
+
+# Création de la base de données pour la masse monétaire
+# On se concentre sur la période "2015-01-01" - "2020-01-01"
+MM_RU_2015_2020 = window(x = MM_RU_data, start = "2015-01-01", end = "2020-01-01")
+
+MM_RU_2015_2020 <- data.frame(MM_RU_2015_2020, date_2015_2020)
+```
+
+Maintenant que nous avons récupéré les données pour la sous-période, nous pouvons reproduire les graphiques déjà effectués sur l'ensemble de la période.
+
+```{r}
+# Evolution de la production industrielle
+plot_PI_2015_2020 <- ggplot(data = PI_RU_2015_2020, aes(x = date_2015_2020, y = Production_industrielle)) + 
+  geom_line(color = "#99FF33") +
+  labs(title = NULL,
+       x = NULL,  
+       y = "Production industrielle") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())  
+
+# Evolution de la masse monétaire
+plot_MM_2015_2020 <- ggplot(data = MM_RU_2015_2020, aes(x = date_2015_2020, y = Masse_monetaire)) +
+  geom_line(color = "#6699FF") + 
+  labs(title = NULL,
+       x = NULL,  
+       y = "Masse monétaire") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light()
+
+# Afficher les deux graphiques collés
+(plot_PI_2015_2020 + plot_MM_2015_2020) +
+  plot_layout(ncol = 1) +
+  plot_annotation(title = NULL,
+                  theme = theme(plot.title = element_text(hjust = 0.5)))
+
+```
+
+Ce graphique présente l’évolution temporelle du taux de croissance de la production et de la masse monétaire de 2015 à 2020. Sur cette période, les 2 variables varient à peu près de la même façon. Quelques points sont remarquables. Tout d’abord, les fluctuations des variables sont semblables de novembre 2015 à octobre 2016 pour le taux de croissance de la masse monétaire et de mai 2016 à mars 2017 pour la production industrielle. Aussi, les fluctuations se ressemblent de juillet 2018 à avril 2019 pour la masse monétaire et d’octobre 2018 à mai 2019 pour la production. Pour ces quelques mois, les fluctuations se ressemblent et se produisent avec quelques mois de décalage.
+
+**Nuage de point avec masse monétaire en avance**
+
+```{r}
+data_2015_2020 <- data.frame(MM_RU_2015_2020, PI_RU_2015_2020)
+ggplot(data = data_2015_2020, aes(x = MM_decal, y = Production_industrielle)) +
+  geom_point(color = "#6699CC") +
+  labs(title = NULL,
+       x = "Masse monétaire",
+       y = "Production industrielle") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(aes(label = format(data_2015_2020$date_2015_2020, "%Y-%m")), size = 2)
+```
+
+Ce nuage de points montre le taux de croissance de la production industrielle en fonction du taux de croissance de la masse monétaire de 2015 à 2020. Sur ce graphique, nous utilisons la masse monétaire décalée d’un mois et un point correspond à un mois. Reprenons les deux périodes du graphique précédent. En rouge, nous pouvons observer quelques points où, plus le taux de croissance de la production augmente, plus celui de la masse monétaire augmente. En revanche, la relation n’est pas vérifiée pour les données entourées en violet.
+
+**Pandémie de COVID-19 (à partir de 2019)**
+
+Enfin, la pandémie de COVID-19, qui a commencé en 2019, a entraîné des perturbations économiques massives à l'échelle mondiale, y compris au Royaume-Uni.
+
+```{r}
+# Création de la base de données pour la production industrielle
+# On se concentre sur la période "2019-01-01" - "2022-01-01"
+PI_RU_2019_2022 = window(x = PI_RU_data, start = "2019-01-01", end = "2022-01-01")
+
+date_2019_2022 <- seq(as.Date("2019-01-01"), by = "month", len = 37)
+PI_RU_2019_2022 <- data.frame(PI_RU_2019_2022, date_2019_2022)
+
+
+# Création de la base de données pour la masse monétaire
+# On se concentre sur la période "2019-01-01" - "2022-01-01"
+MM_RU_2019_2022 = window(x = MM_RU_data, start = "2019-01-01", end = "2022-01-01")
+
+MM_RU_2019_2022 <- data.frame(MM_RU_2019_2022, date_2019_2022)
+```
+
+Maintenant que nous avons récupéré les données pour la sous-période, nous pouvons reproduire les graphiques déjà effectués sur l'ensemble de la période.
+
+```{r}
+# Evolution de la production industrielle
+plot_PI_2019_2022 <- ggplot(data = PI_RU_2019_2022, aes(x = date_2019_2022, y = Production_industrielle)) + 
+  geom_line(color = "#99FF33") +
+  labs(title = NULL,
+       x = NULL,  
+       y = "Production industrielle") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())  
+
+# Evolution de la masse monétaire
+plot_MM_2019_2022 <- ggplot(data = MM_RU_2019_2022, aes(x = date_2019_2022, y = Masse_monetaire)) +
+  geom_line(color = "#6699FF") + 
+  labs(title = NULL,
+       x = NULL,  
+       y = "Masse monétaire") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_light()
+
+# Superposer les deux graphiques
+(plot_PI_2019_2022 + plot_MM_2019_2022) +
+  plot_layout(ncol = 1) +
+  plot_annotation(title = NULL,
+                  theme = theme(plot.title = element_text(hjust = 0.5)))
+
+```
+
+Ce graphique présente l’évolution temporelle du taux de croissance de la production et de la masse monétaire de 2019 à 2022. On remarque que l'augmentation de la masse monétaire en 2020 entraine la diminution du taux de croissance de la production industrielle quelques mois plus tard. Pourtant, la masse monétaire est une variable procyclique, les deux variables devraient varier dans le même sens que la production.
+
+La chute de la production industrielle pendant la crise sanitaire est due à une combinaison de facteurs, notamment les mesures de confinement strictes qui ont entraîné la fermeture temporaire des entreprises, les perturbations dans les chaînes d'approvisionnement mondiales, et la baisse de la demande des consommateurs, impactant significativement l'activité manufacturière au Royaume-Uni. Au niveau de la masse monétaire, il y a eu une grande aide du gouvernement pour faire face à la crise.
+
+**Nuage de point avec masse monétaire en avance**
+
+```{r}
+data_2019_2022 <- data.frame(MM_RU_2019_2022, PI_RU_2019_2022)
+ggplot(data = data_2019_2022, aes(x = MM_decal, y = Production_industrielle)) +
+  geom_point(color = "#6699CC") +
+  labs(title = NULL,
+       x = "Masse monétaire",
+       y = "Production industrielle") +
+  theme_light() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text_repel(aes(label = format(data_2019_2022$date_2019_2022, "%Y-%m")), size = 2)
+```
+
+Ce nuage de points montre le taux de croissance de la production industrielle en fonction du taux de croissance de la masse monétaire de 2019 à 2022. Sur ce graphique, nous utilisons la masse monétaire décalée d’un mois et un point correspond à un mois. Malgré le fait que les deux variables aient fortement fluctué en 2020 à quelques mois d’écarts, cette relation ne ressort pas sur ce nuage de points. En effet, les points entourés en rouge ne semblent pas avoir de lien linéaire, exponentiel ou tout autre forme.
+
+# Conclusion
+
+Pour conclure, l’objectif de cette étude de cas était de comparer le lien théorique entre deux variables et ce que nous observons réellement. Pour rappel, nous nous sommes intéressés au taux de croissance de la production industrielle et au taux de croissance de la masse monétaire.
+
+En théorie, la masse monétaire et la production sont corrélées positivement mais, selon les théories, la variation de la masse monétaire est la cause de la variation de la production ou inversement. Avec les analyses réalisées, nous n’avons pas eu la possibilité de vérifier quelle causalité est la bonne mais nous avons pu étudier la corrélation entre les deux variables.
+
+Finalement, sur l’ensemble de la période 1988-2023, nous n’avons pas observé de relation entre les deux variables. Alors, pour être plus précis, nous nous sommes intéressés à quelques sous-périodes où un choc a eu lieu.
+Pourtant, même en étudiant 4 périodes différentes, nous avons observé très peu voire pas du tout de corrélation entre les deux variables pour chacune des sous-périodes. Les résultats auraient peut-être été différents si le temps de décalage de la masse monétaire avait été plus important. Pour rappel, nous avions avancé la masse monétaire d’un mois.
+
+
+
